@@ -195,7 +195,7 @@ class YandexImagesDowload():
                 
                 # create dir if not exists:
                 pathlib.Path(directory).mkdir(parents=True, exist_ok=True) 
-                with open(img_path, "wb", encoding="utf8") as f:
+                with open(img_path, "wb") as f:
                     f.write(data)
 
                 download_status = "success"

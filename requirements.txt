@@ -1,2 +1,7 @@
+selenium_wire==1.0.8
+urllib3==1.24.1
+dataclasses_json==0.2.14
 requests==2.21.0
 beautifulsoup4==4.8.0
+dataclasses==0.6
+typing==3.7.4

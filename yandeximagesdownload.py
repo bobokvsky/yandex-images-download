@@ -1,467 +1,660 @@
+"""
+////////// How requests are made
+Each request in Yandex images is as follows.
+
+Usually, we make the request on the site:
+>>> "https://yandex.ru/images/search?text=Putin"
+After getting request, the browser gets html of page 1 request.
+When the user is scrolling down, the Yandex automatically makes requests
+to get next pages and loads them to your browser.
+
+To see it, just loads these urls and compare them with the main url:
+>>> https://yandex.ru/images/search?p=0&text=Putin
+>>> https://yandex.ru/images/search?p=1&text=Putin
+>>> https://yandex.ru/images/search?p=2&text=Putin
+
+The number of images per page seems to depend on using sockets.
+requests.get() seems to return 30 images per page. (tested on my PC and on Linux server)
+On my PC, in Google Chrome, each page have 109 images.
+
+Pages are indexed from 0 to 49. (from 0 to 26 on Google Chrome).
+So, the maximum count of images is 1500. (and, by surprise, 1485 on Google Chrome)
+
+We can find the actual last page by following:
+1) Find tag <div> with class="serp-list".
+2) This tag has attribute called "data-bem" with JSON data: {"serp-list" : serp-list}
+3) serp-list has these keys: ("pageNum", "lastPage", "reqid"). 
+    "lastPage" is the target. 
+//////////
+
+////////// How "image box" is stored in html page file.
+0) First, we need get page source.
+1) Each found image "box" is stored into tag <div> with class="serp-item".
+2) This tag has attribute called "data-bem" with JSON data: {"serp-item" : serp-item}
+3) serp_item has these keys:
+("reqid", "freshness", "preview", "dups", "thumb", "snippet", 
+"detail_url", "img_href", "useProxy", "pos", "id", "rimId", "docid", 
+"greenUrlCounterPath", "counterPath")
+
+The most interested keys are "img_href" and "snippet"
+a) "img_href" is the source url of image. 
+Example: "img_href": ("https://www.bestnews.kz/media/k2/items/"
+                    "cache/b777a09d352b16a52af288cda2537345_XL.jpg")
+
+b) "snippet" has useful information about the source url.
+
+Example: {"title": "Как отметит свой 64-й день рождения Владимир Путин - Bestnew",
+"hasTitle": True,
+"text": "Как отметит свой 64-й день рождения Владимир <b>Путин</b>.",
+"url": ("https://www.bestnews.kz/index.php/bn-v-mire/item/"
+        "7533-kak-otmetit-svoj-64-j-den-rozhdeniya-vladimir-putin/amp"),
+"domain": "Bestnews.kz",
+"redirUrl": ("https://www.bestnews.kz/index.php/bn-v-mire/item/
+            7533-kak-otmetit-svoj-64-j-den-rozhdeniya-vladimir-putin/amp")}
+"""
+
+import argparse
+import itertools
+import json
+import logging
 import os
-import requests
-import re
 import pathlib
+import re
+import requests
 import sys
 import time
+
 from bs4 import BeautifulSoup
-import json
-import argparse
-from math import ceil
+from dataclasses import dataclass
+from dataclasses_json import dataclass_json
+from math import floor
+from multiprocessing import Pool
+from seleniumwire.webdriver import Chrome
+from seleniumwire.webdriver import Edge
+from seleniumwire.webdriver import Firefox
+from seleniumwire.webdriver import Safari
+from seleniumwire import webdriver
+from typing import List, Union
+from urllib.parse import urlparse, urlencode
+from urllib3.exceptions import SSLError, NewConnectionError
 
-args_list = ["keywords", "keywords_from_file", "output_directory", "limit", 
-            "isize", "exact_isize", "iorient", "type", "color", "itype", "commercial", "recent",
-            "silent_mode", "single_image"]
 
-def user_input():
+def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-k", "--keywords", help="delimited list input, separated by a comma", type=str, required=False)
-    parser.add_argument("-kf", "--keywords_from_file", help="extract list of keywords from a text file, one line = one keyword.", type=str, required=False)
-    parser.add_argument("-o", "--output_directory", help="download images in a specific main directory", default = "downloads", type=str, required=False)
-    parser.add_argument("-l", "--limit", help="delimited list input", default = 100, type=int, required=False)
-    parser.add_argument("-s", "--isize", help="image size", type=str, required=False,
-                        choices=["large","medium","small"])
-    parser.add_argument("-es", "--exact_isize", help="exact image resolution \"WIDTH HEIGHT\"", nargs=2, type=int, required=False)
-    parser.add_argument("-or", "--iorient", help="orient of image", type=str, required=False,
+    input_group = parser.add_mutually_exclusive_group(required=True)
+    
+    
+    parser.add_argument("browser", 
+                    help=("browser with WebDriver"),
+                    type=str,
+                    choices=["Firefox", "Chrome", 
+                             "Edge", "Safari"],)
+    
+    parser.add_argument("-dp", "--driver-path", 
+                        help=("path to browers's WebDriver"),
+                        type=str, default=None)
+
+    input_group.add_argument("-k", "--keywords", 
+                        help=("delimited list input, separated by a comma"), 
+                        type=str, default=None)
+    
+    input_group.add_argument("-kf", "--keywords-from-file", 
+                        help=("extract list of keywords from a text file. "
+                              "one line = one keyword."), 
+                        type=str, default=None)
+    
+    parser.add_argument("-q", "--quiet-mode", 
+                        default=False, 
+                        help="do not logging.info() messages", 
+                        action="store_true")
+    
+    input_group.add_argument("-x", "--single-image", 
+                        help="downloading a single image from URL", 
+                        type=str, default=None)
+    
+    parser.add_argument("-o", "--output-directory", 
+                        help=("download images in a specific main directory"),
+                        type=str, default="downloads")
+    
+    parser.add_argument("-l", "--limit", 
+                        help="delimited list input. default: 100", 
+                        type=int, default = 100)
+    
+    size_group = parser.add_mutually_exclusive_group()
+    
+    size_group.add_argument("--isize", help="image size", 
+                        type=str, default=None,
+                        choices=["large", "medium", "small"])
+    
+    size_group.add_argument("--exact-isize", 
+                        help=("exact image resolution"),
+                        nargs=2, type=int, default=None)
+    
+    parser.add_argument("--iorient", 
+                        help="orient of image", 
+                        type=str, default=None,
                         choices=["horizontal", "vertical", "square"])
-    parser.add_argument("-t", "--type", help="image type", type=str, required=False,
-                        choices=["photo","clipart","lineart","face","demotivator"])
-    parser.add_argument("-co", "--color", help="filter on color", type=str, required=False,
-                        choices=["color", "gray", "red", "orange", "cyan", "yellow", "green", "blue", "violet", "white", "black"])
-    parser.add_argument("-it", "--itype", help="image extension type", type=str, required=False,
-                        choices=["jpg","png","gifan"])
-    parser.add_argument("-com", "--commercial", help="commercial check", type=str, required=False,
+    parser.add_argument("--itype", 
+                        help="image type", 
+                        type=str, default=None,
+                        choices=["photo", "clipart", "lineart",
+                                 "face", "demotivator"])
+    parser.add_argument("--color", 
+                        help="filter on color", 
+                        type=str, default=None,
+                        choices=["color", "gray", "red", "orange", 
+                                 "cyan", "yellow", "green", "blue", 
+                                 "violet", "white", "black"])
+    
+    parser.add_argument("--extension", 
+                        help="image extension type", 
+                        type=str, default=None,
+                        choices=["jpg", "png", "gifan"])
+    
+    parser.add_argument("--commercial", 
+                        help="add commerce check", 
+                        type=str, default=None,
                         choices=["1"])
-    parser.add_argument("-rct", "--recent", help="add checking recently", type=str, required=False,
+    
+    parser.add_argument("--recent", 
+                        help="add recency check", 
+                        type=str, default=None,
                         choices=["7D"])
+    
+    parser.add_argument("--json",
+                        help="save results information to json file",
+                        type=str, default=False)
+    
+    parser.add_argument("--num-workers",
+                        help="number of workers",
+                        type=int, default=0)
+    
+    args = parser.parse_args()
 
-    parser.add_argument("-x", "--single_image", help="downloading a single image from URL", type=str, required=False)
+    return args
     
 
-    parser.add_argument("-sil", "--silent_mode", default=False, help="Remains silent. Does not print notification messages on the terminal", action="store_true")
+#####
+@dataclass_json
+@dataclass
+class ImgUrlResult:
+    status: str  # "succes" or "fail"
+    message: str
+    img_url : str
+    img_path: str
+    
+@dataclass_json
+@dataclass
+class PageResult:
+    status: str  # "succes" or "fail"
+    message: str
+    page : int
+    errors_count : int
+    img_url_results: List[ImgUrlResult]
 
-    return parser
+@dataclass_json
+@dataclass
+class KeywordResult:
+    status: str  # "succes" or "fail"
+    message: str
+    keyword: str
+    errors_count : int
+    page_results: List[PageResult]
+    
+@dataclass_json
+@dataclass
+class DownloaderResult:
+    status: str  # "succes" or "fail"
+    message: str
+    keyword_results: List[KeywordResult]
+    
+#####
+    
+def filepath_fix_existing(directory_path : pathlib.Path,
+                          name : str, 
+                          filepath : pathlib.Path) -> pathlib.Path:
+    """Expands name portion of filepath with numeric "(x)" suffix.
+    Used when multiproccesing is not running."""
+    new_filepath = filepath
+    if filepath.exists():
+        for i in itertools.count(start = 1):
+            new_name = f'{name} ({i}){filepath.suffix}'
+            new_filepath = directory_path / new_name
+            if not new_filepath.exists():
+                break
+    
+    return new_filepath
+    
+def download_single_image(img_url : str,
+                          output_directory : pathlib.Path,
+                          sub_directory : str = "",
+                          multiproccess = False) -> ImgUrlResult:
+    img_url_result = ImgUrlResult(status = None,
+                                  message = None,
+                                  img_url = img_url,
+                                  img_path = None)
 
-class YandexImagesDowload():
+    img_extensions = (".jpg", ".jpeg", ".jfif", "jpe", ".gif", 
+                    ".png", ".bmp", ".svg", ".webp", ".ico")
+    content_type_to_ext = {
+        "image/gif" : ".gif", 
+        "image/jpeg" : ".jpg", 
+        "image/png" : ".png", 
+        "image/svg+xml" : ".svg", 
+        "image/x-icon" : ".ico"
+        }
+
+    try:
+        response = requests.get(img_url, timeout = 10)
+        
+        data = response.content
+        content_type = response.headers["Content-Type"]
+    
+        if response.ok:
+            
+            img_name = pathlib.Path(urlparse(img_url).path).name
+            img_name = img_name[:YandexImagesDownloader.MAXIMUM_FILENAME_LENGTH]
+            
+            directory_path = output_directory / sub_directory
+            directory_path.mkdir(parents=True, exist_ok=True)
+            
+            if multiproccess:
+                img_name = f"[{os.getpid()}] {img_name}"
+            
+            img_path = directory_path / img_name
+            if not any(img_path.name.endswith(ext) for ext in img_extensions):
+                img_path = img_path.with_suffix(content_type_to_ext[content_type])
+            
+            img_path = filepath_fix_existing(directory_path, img_name, img_path)
+            with open(img_path, "wb") as f:
+                f.write(data)
+
+            img_url_result.status = "success"
+            img_url_result.message = "Downloaded the image."
+            img_url_result.img_path = str(img_path)
+        else:
+            img_url_result.status = "fail"
+            img_url_result.message = (f"img_url response is not ok."
+                                    f" response: {response}.")
+
+    except (KeyboardInterrupt, SystemExit):
+        raise
+
+    except (requests.exceptions.SSLError, 
+            requests.exceptions.ConnectionError) as e:
+        img_url_result.status = "fail"
+        img_url_result.message = f"{type(e)}"
+    
+    except Exception as exception:
+        img_url_result.status = "fail"
+        img_url_result.message = (f"Something is wrong here.",
+                            f" Error: {type(exception), exception}")
+    
+    if img_url_result.status == "fail":
+        logging.info(f"    fail: {img_url} error: {img_url_result.message}")
+    else:
+        logging.info(f"    {img_url_result.message} ==> {img_path}")
+    
+    return img_url_result
+
+#####
+
+class YandexImagesDownloader():
     """Class to download images from yandex.ru
-
-    ////////// How requests are made
-    Each request in Yandex images is as follows.
-
-    Usually, we make the request on the site:
-    >>> "https://yandex.ru/images/search?text=Putin"
-    After getting request, the browser gets html of page 1 request.
-    When the user is scrolling down, the Yandex automatically makes requests
-    to get next pages and loads them to your browser.
-
-    To see it, just loads these urls and compare them with the main url:
-    >>> https://yandex.ru/images/search?p=0&text=Putin
-    >>> https://yandex.ru/images/search?p=1&text=Putin
-    >>> https://yandex.ru/images/search?p=2&text=Putin
-
-    The number of images per page seems to depend on using sockets.
-    requests.get() seems to return 30 images per page. (tested on my PC and on Linux server)
-    On my PC, in Google Chrome, each page have 109 images.
-
-    Pages are indexed from 0 to 49. (from 0 to 26 on Google Chrome).
-    So, the maximum count of images is 1500. (and, by surprise, 1485 on Google Chrome)
-
-    We can find the actual last page by following:
-    1) Find tag <div> with class="serp-list".
-    2) This tag has attribute called "data-bem" with JSON data: {"serp-list" : serp-list}
-    3) serp-list has these keys: ("pageNum", "lastPage", "reqid"). 
-        "lastPage" is the target. 
-    //////////
-
-    ////////// How "image box" is stored in html page file.
-    0) First, we need get page source.
-    1) Each found image "box" is stored into tag <div> with class="serp-item".
-    2) This tag has attribute called "data-bem" with JSON data: {"serp-item" : serp-item}
-    3) serp_item has these keys:
-    ("reqid", "freshness", "preview", "dups", "thumb", "snippet", 
-    "detail_url", "img_href", "useProxy", "pos", "id", "rimId", "docid", 
-    "greenUrlCounterPath", "counterPath")
-
-    The most interested keys are "img_href" and "snippet"
-    a) "img_href" is the source url of image. 
-    Example: "img_href": ("https://www.bestnews.kz/media/k2/items/"
-                        "cache/b777a09d352b16a52af288cda2537345_XL.jpg")
-    
-    b) "snippet" has useful information about the source url.
-
-    Example: {"title": "Как отметит свой 64-й день рождения Владимир Путин - Bestnew",
-    "hasTitle": True,
-    "text": "Как отметит свой 64-й день рождения Владимир <b>Путин</b>.",
-    "url": ("https://www.bestnews.kz/index.php/bn-v-mire/item/"
-            "7533-kak-otmetit-svoj-64-j-den-rozhdeniya-vladimir-putin/amp"),
-    "domain": "Bestnews.kz",
-    "redirUrl": ("https://www.bestnews.kz/index.php/bn-v-mire/item/
-                7533-kak-otmetit-svoj-64-j-den-rozhdeniya-vladimir-putin/amp")}
-    
     """
 
+    MAIN_URL = "https://yandex.ru/images/search"
     MAXIMUM_PAGES_PER_SEARCH = 50  # read "How requests are made" for details
     MAXIMUM_IMAGES_PER_PAGE = 30 # read "How requests are made" for details
+    MAXIMUM_FILENAME_LENGTH = 50
 
-    def __init__(self):
-        pass
-
-
-    def build_url_parameters(self, arguments):
-        """Function to build url of request based on arguments.
-        Returns (str) build_url (example : "&nomisspell=1&isize=large&iorient=vertical&color=orange")
-        Check filters on images.yandex.ru and script info for details.
-        """
+    def __init__(self, 
+                 driver : Union[Chrome, Edge, Firefox, Safari], 
+                 output_directory = "download/", 
+                 limit = 100, 
+                 isize = None,
+                 exact_isize = None,
+                 iorient = None,
+                 extension = None,
+                 color = None,
+                 itype = None, 
+                 commercial = None, 
+                 recent = None,
+                 pool = None):
+        self.driver = driver
+        self.output_directory = pathlib.Path(output_directory)
+        self.limit = limit
+        self.isize = isize
+        self.exact_isize = exact_isize
+        self.iorient = iorient
+        self.extension = extension
+        self.color = color
+        self.itype = itype
+        self.commercial = commercial
+        self.recent = recent
         
-        built_url = ""
-        params = ["isize", "exact_isize", "iorient", "type", "color", "itype", "commercial", "recent"]
+        self.url_params = self.init_url_params()
+        self.requests_headers = {
+            'User-Agent' : (
+                    "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML,"
+                    " like Gecko) Chrome/41.0.2228.0 Safari/537.36"
+                )
+        }
+        self.cookies = {}
+        self.pool = pool
+        
+        logging.info(f'Output directory is set to "{self.output_directory}/"')
+        logging.info(f"Limit of images is set to {self.limit}")
+
+        
+    def get_response(self):
+        pathes = [request.path for request in self.driver.requests]
+        request = self.driver.requests[pathes.index(self.driver.current_url)]
+        return request.response
+
+    def init_url_params(self):
+        params = {
+            "nomisspell" : 1,
+            "isize" : self.isize, 
+            "iw" : None,
+            "ih" : None,
+            "iorient" : self.iorient,
+            "type" : self.extension,
+            "color" : self.color,
+            "itype" : self.itype,
+            "commercial" : self.commercial,
+            "recent" : self.recent
+            }
         
         for param in params:
-            value = arguments[param]
-            if value is not None:
-                if param == "exact_isize":
-                    width, height = arguments["exact_isize"]
-                    built_url += f"&isize=eq&iw={width}&ih={height}"
-                else:
-                    built_url += f"&{param}={arguments[param]}"
+            if hasattr(self, param):
+                value = eval(f"self.{param}")
+                if value:
+                    params[param] = value
+        
+        if self.exact_isize:
+            width, height = self.exact_isize
+            params["isize"] = "eq"
+            params["iw"] = width
+            params["ih"] = height
 
-        return built_url
-
-    def filename_fix_existing(self, filepath):
-        """Expands name portion of filepath with numeric " (x)" suffix to
-        return filename that doesn"t exist already.
-        """
-        if not os.path.isfile(filepath):
-            return filepath
-        path = pathlib.Path(filepath)
-        dirpath = path.parent
-        name = path.stem
-        extension = path.suffix
+        return params
     
-        names = [x for x in os.listdir(dirpath) if x.startswith(name)]
-        names = [pathlib.Path(x).stem for x in names]
-        suffixes = [x.replace(name, "") for x in names]
+    def get_url_params(self, page, text):
+        params = {
+            "p" : page,
+            "text" : text
+            }
+        params.update(self.url_params)
         
-        # filter suffixes that match " (x)" pattern
-        suffixes = [x[2:-1] for x in suffixes if re.match(r" \([0-9]+\)", x)]
-        
-        new_idx = 1
-
-        # get new_idx for file
-        if len(suffixes):
-            indexes  = sorted([int(x) for x in suffixes])
-            new_idx = 1
-            for i, idx in enumerate(indexes, start=1):
-                new_idx = i + 1
-                if i != idx:
-                    new_idx = i
-                    break
+        return params
     
-        new_filepath = f"{dirpath}{os.sep}{name} ({new_idx}){extension}"
-
-        return new_filepath
-
-
-    def download_single_image(self, img_url, directory, arguments, session):
-        """Function to download a single image into directory using requests.Session()
-        Returns status (success/fail), message and img_path"""
-
-        img_extensions = (".jpg", ".jpeg", ".jfif", "jpe", ".gif", 
-                        ".png", ".bmp", ".svg", ".webp", ".ico")
-        img_content_types = {"image/gif" : ".gif", 
-                            "image/jpeg" : ".jpg", 
-                            "image/png" : ".png", 
-                            "image/svg+xml" : ".svg", 
-                            "image/x-icon" : ".ico"}
-        img_path = ""
-
-        try:
-            response = session.get(img_url)
-            
-            data = response.content
-            content_type = response.headers["Content-Type"]
+    def download_images_by_page(self, keyword, page, imgs_count,
+                                sub_directory) -> PageResult:
         
-            if response.ok:
-                img_name = os.path.basename(img_url) # last part of url
-                if img_name.find("?") != -1:
-                    img_name = img_name[0:img_name.find("?")]  # remove "abc.jpg?options"
-                if img_name.find("!") != -1:
-                    img_name = img_name[0:img_name.find("!")]  # remove "abc.jpg!options"
-                if not any(ext in img_name for ext in img_extensions):
-                    img_name = img_name + img_content_types[content_type]
-                
-                img_path = os.path.normpath(directory + os.sep + img_name)
-                img_path = self.filename_fix_existing(img_path)
-                
-                # create dir if not exists:
-                pathlib.Path(directory).mkdir(parents=True, exist_ok=True) 
-                with open(img_path, "wb") as f:
-                    f.write(data)
-
-                download_status = "success"
-                download_message = "Downloaded Image"
-            else:
-                download_status = "fail"
-                download_message = f"Response is not ok: {response}"
-
-
-        except (KeyboardInterrupt, SystemExit):
-            raise
-
-        except requests.exceptions.SSLError:
-            download_status = "fail"
-            download_message = f"SSLError. Skipping."
-
-        except requests.exceptions.ConnectionError:
-            download_status = "fail"
-            download_message = f"ConnectionError. Skipping."
+        page_result = PageResult(status = None,
+                                 message = None,
+                                 page = page,
+                                 errors_count = None,
+                                 img_url_results = [])
         
-        except Exception as exception:
-            download_status = "fail"
-            download_message = f"Something is wrong here. Error: {type(exception), exception}"
+
+        self.check_captcha_and_get(YandexImagesDownloader.MAIN_URL, 
+                                   params = self.get_url_params(page, keyword))
         
-        if not arguments["silent_mode"]: 
-            if download_status == "fail":
-                print(f"    fail: {img_url} error: {download_message}")
-            elif download_status == "success":
-                print(f"    {download_message} ==> {img_path}")
+        response = self.get_response()
         
-        return download_status, download_message, img_path
-    
-
-
-    def download_images_by_keyword(self, keyword, arguments, session):
-        """Function to download a many images from yandex images by specified keyword.
-        Using requests.Session().
-        Returns dict of statutes, messages and img_paths of each downloaded images.
+        if not (response.reason == "OK"):
+            page_result.status = "fail"
+            page_result.message = (f"Page response is not ok."
+                                    f" page: {page},",
+                                    f" status_code: {response.status_code}.")
+            page_result.errors_count = YandexImagesDownloader.MAXIMUM_IMAGES_PER_PAGE
+            return page_result
         
-        Example of output:
-        {'testA': {'status': 'success', 'last_page': 1, 'errors_count': 0, 'page0': 
-        {'img0': {'status': 'success', 'message': 'Downloaded Image', 'path': 'testA\\s1200.jpg'}, 
-        'img1': {'status': 'success', 'message': 'Downloaded Image', 'path': 'testA\\testo_dlya_piccy_na_kefire.jpg.crop_display.jpg'}, 
-        'img2': {'status': 'success', 'message': 'Downloaded Image', 'path': 'testA\\55c10a578ce3e.jpg'}}}}
-        """
+        soup_page = BeautifulSoup(self.driver.page_source, "lxml")
 
-        keyword_dict_results = {}
-        keyword_url = keyword.replace(" ", "%20")
-        
-        main_url = f"https://yandex.ru/images/search?text={keyword_url}"
-        
-        response = session.get(main_url)
-        soup = BeautifulSoup(response.content, "lxml")
+        # Getting all image urls from page.
+        tag_sepr_item = soup_page.find_all("div", class_ = "serp-item")
+        serp_items = [json.loads(item.attrs["data-bem"])["serp-item"] 
+                        for item in tag_sepr_item]
+        img_hrefs = [key["img_href"] for key in serp_items]
 
-
-        keyword_dict_results["status"] = "success"
-        keyword_dict_results["last_page"] = 0
-        keyword_dict_results["errors_count"] = 0
-
-
-        if not response.ok:
-            keyword_dict_results["status"] = "fail"
-            keyword_dict_results["message"] = (f"Something is wrong here."
-                                            f"url: {main_url}, status_ok: {response.ok}")
-
-            return keyword_dict_results
-
-        soup = BeautifulSoup(response.content, "lxml")
-        
-        # Getting lastPage.
-        # 1) Find tag <div> with class="serp-list".
-        tag_sepr_list = soup.find("div", class_ = "serp-list")
-        if tag_sepr_list:
-            # 2) This tag has tag called "data-bem" with JSON data: {"serp-list" : serp-list}
-            serp_list = json.loads(tag_sepr_list.attrs["data-bem"])["serp-list"]
-            # 3) serp-list has these keys: ("pageNum", "lastPage", "reqid"). 
-            last_page = serp_list["lastPage"]
-        else:
-            keyword_dict_results["status"] = "success"
-            keyword_dict_results["message"] = (f"No images with keyword \"{keyword_url}\""
-                                            " found. Skipping.")
-            print(f"    {keyword_dict_results['message']}")
-            
-            return keyword_dict_results
-
-
-        if not arguments["silent_mode"]: 
-            print(f"  Found {last_page+1} pages of {keyword}.")
-
-        actual_last_page = ceil(arguments["limit"] / YandexImagesDowload.MAXIMUM_IMAGES_PER_PAGE)
-        keyword_dict_results["last_page"] = actual_last_page
-
-
-        # Getting all images.
-        output_directory = arguments["output_directory"]
-        keyword_directory = output_directory + os.sep + keyword
-        pathlib.Path(keyword_directory).mkdir(parents=True, exist_ok=True) 
-
-        build_url = "&nomisspell=1"  # do not make misspell change
-        built_url = build_url + self.build_url_parameters(arguments)
-
-        limit = arguments["limit"]
-        count_imgs = 0
-            
-        for page in range(last_page+1):
-
-            if not arguments["silent_mode"]: 
-                print(f"  Looking page {page+1}/{actual_last_page}...")
-
-            keyword_dict_results[f"page{page}"] = {}
-            url_page = f"https://yandex.ru/images/search?p={page}&text={keyword_url}" + built_url
-            response_page = session.get(url_page)
-            if not response_page.ok:
-                keyword_dict_results[f"page{page}"]["status"] = "fail"
-                keyword_dict_results[f"page{page}"]["message"] = (f"Something is wrong here."
-                                        f"Page: {page}, status_ok: {response_page.ok}.")
-            
-            soup_page = BeautifulSoup(response_page.content, "lxml")
-
-            # 1) Each found image is stored into <div> with class="serp-item".
-            tag_sepr_item = soup_page.find_all("div", class_ = "serp-item")
-            # 2) This tag has attribute called "data-bem" with JSON data: {"serp-item" : serp-item}
-            serp_items = [json.loads(item.attrs["data-bem"])["serp-item"] for item in tag_sepr_item]
-            # 3) In this JSON, img source is stored in "img_href"
-            img_hrefs = [key["img_href"] for key in serp_items]
-
-
-            for i, img_url in enumerate(img_hrefs):
-                keyword_dict_results[f"page{page}"][f"img{i}"] = {}
-                (download_status,
-                download_message,
-                img_path) = self.download_single_image(img_url, directory=keyword_directory,
-                                                                arguments = arguments,
-                                                                session = session)
-
-                keyword_dict_results[f"page{page}"][f"img{i}"]["status"] = download_status
-                keyword_dict_results[f"page{page}"][f"img{i}"]["message"] = download_message
-                keyword_dict_results[f"page{page}"][f"img{i}"]["path"] = img_path
-
-                if download_status == "success":
-                    count_imgs += 1
-                else:
-                    keyword_dict_results["errors_count"] += 1
-
-                if count_imgs > limit:
-                    # exit from 2 loops
-                    return keyword_dict_results
-
-            time.sleep(0.3)  # bot id protection
-
-        return keyword_dict_results 
-
-
-    def download_images(self, keywords, arguments, session):
-        """Function to download a many images from yandex images by list of keywords.
-        Returns dict of dicts having [statutes, messages, img_paths] for each keywords."""
-
-        results = {}
-        print(f"Limit of images is set to {arguments['limit']}")
-        for keyword in keywords:
-            print(f"Downloading images for \"{keyword}\"...")
-
-            self.check_captcha(session)
-            results[keyword] = self.download_images_by_keyword(keyword, arguments, session)
-
-            print(f"\"{keyword}\" finished!")
-
-        return results
-
-    def check_captcha(self, session):
-        """Checking for captcha on url using requests.Session().
-        If there is captcha, you have to fill it in input() or exit."""
-
-        test_url = "https://yandex.ru/images/search?text=Test"
-        c_url = "http://yandex.ru/checkcaptcha"
-        response = session.get(test_url)
-
-        while True:
-            soup = BeautifulSoup(response.content, "lxml")
-            if soup.select(".form__captcha"):
-                
-                captcha_url = soup.select('.form__captcha')[0].attrs['src']
-                print(f"Captcha: {captcha_url}")
-                reply = input("Please, write the captcha or [quit/exit/q] to exit: ")
-                key = soup.select(".form__key")[0].attrs['value']
-                retpath = soup.select('.form__retpath')[0].attrs['value']
-
-                if reply == "quit" or reply == "q" or reply == "exit":
-                    response.close()
-                    sys.exit()
-                else:
-                    response = session.get(c_url, params={'key': key, 
-                                                        'retpath': retpath, 
-                                                        'rep': reply})
-                                                    
-            else:
+        errors_count = 0
+        for img_url in img_hrefs:
+            if imgs_count >= self.limit:
                 break
 
+            if self.pool:
+                img_url_result = self.pool.apply_async(
+                    download_single_image, args = (img_url, self.output_directory, 
+                                                   sub_directory, True)
+                    )
+            else:
+                img_url_result = download_single_image(img_url, self.output_directory, 
+                                                   sub_directory)
+            
+            page_result.img_url_results.append(img_url_result)
+            
+            imgs_count += 1
+            
+        if self.pool:
+            for i, img_url_result in enumerate(page_result.img_url_results):
+                page_result.img_url_results[i] = img_url_result.get()
+        errors_count += sum(1 if page_result.status == "fail" else 0
+                            for page_result in page_result.img_url_results)
+            
+        page_result.status = "success"
+        page_result.message = f"All successful images from page {page} downloaded."
+        page_result.errors_count = errors_count
+        
+        return page_result
 
 
+    def download_images_by_keyword(self, keyword, 
+                                   sub_directory = "") -> KeywordResult:
+        keyword_result = KeywordResult(status = None, 
+                                       message = None,
+                                       keyword = keyword,
+                                       errors_count = None,
+                                       page_results = [])
 
-def keywords_from_file(file_name):
-    """Returns list of keywords from file."""
-    search_keyword = []
-    with open(file_name, "r", encoding="utf-8") as f:
-        for line in f:
-            search_keyword.append(line.strip())
+        self.check_captcha_and_get(YandexImagesDownloader.MAIN_URL, 
+                                   params={'text': keyword})
+        response = self.get_response()
+
+        if not (response.reason == "OK"):
+            keyword_result = "fail"
+            keyword_result.message = ("Failed to fetch a search page."
+                                       f" url: {YandexImagesDownloader.MAIN_URL},"
+                                       f" params: {{'text': {keyword}}},"
+                                       f" status_code: {response.status_code}")
+            return keyword_result
+
+        soup = BeautifulSoup(self.driver.page_source, "lxml")
+
+
+        # Getting last_page.
+        tag_serp_list = soup.find("div", class_ = "serp-list")
+        if not tag_serp_list:
+            keyword_result.status = "success"
+            keyword_result.message = f"No images with keyword {keyword} found."
+            keyword_result.errors_count = 0
+            logging.info(f"    {keyword_result.message}")
+            return keyword_result
+        serp_list = json.loads(tag_serp_list.attrs["data-bem"])["serp-list"]
+        last_page = serp_list["lastPage"]
+        actual_last_page = 1 + floor(self.limit / YandexImagesDownloader.MAXIMUM_IMAGES_PER_PAGE)
+
+
+        logging.info(f"  Found {last_page+1} pages of {keyword}.")
+        # Getting all images.
+        imgs_count = 0
+        errors_count = 0
+
+        for page in range(last_page + 1):
+            if imgs_count >= self.limit:
+                break
+            
+            if page > actual_last_page:
+                actual_last_page += 1
+                
+            logging.info(f"  Scrapping page {page+1}/{actual_last_page}...")
+                
+            page_result = self.download_images_by_page(keyword, page, 
+                                                       imgs_count, sub_directory)
+            keyword_result.page_results.append(page_result)
+            
+            imgs_count += sum(1 for img_url_result in page_result.img_url_results 
+                              if img_url_result.status == "success")
+            errors_count += page_result.errors_count
+
+            time.sleep(0.5)  # bot id protection
+            
+        keyword_result.status = "success"
+        keyword_result.message = f"All images for {keyword} downloaded!"
+        keyword_result.errors_count = errors_count
+        
+        return keyword_result 
+
+
+    def download_images(self, keywords : List[str]) -> DownloaderResult:
+        dowloader_result = DownloaderResult(status = None,
+                                            message = None,
+                                            keyword_results = [])
+        
+        dowloader_result.status = "fail"
+        
+        for keyword in keywords:
+            logging.info(f"Downloading images for {keyword}...")
+
+            keyword_result = self.download_images_by_keyword(keyword, 
+                                                             sub_directory = keyword)
+            dowloader_result.keyword_results.append(keyword_result)
+
+            logging.info(keyword_result.message)
+            
+            
+        dowloader_result.status = "success"
+        dowloader_result.message = "Everything is downloaded!"
+            
+        return dowloader_result
     
-    return search_keyword
+    
+    class StopCaptchaInput(Exception):
+        pass
+
+    def check_captcha_and_get(self, url, params = None):
+        """Checking for captcha on url and get url after that.
+        If there is captcha, you have to type it in input() or quit."""
+
+        url_with_params = f"{url}?{urlencode(params)}"
+        
+        del self.driver.requests
+        self.driver.get(url_with_params)
+
+        while True:
+            soup = BeautifulSoup(self.driver.page_source, "lxml")
+        
+            if not soup.select(".form__captcha"):
+                break
+                
+            logging.warning(f"Please, type the captcha in the browser"
+                            ", then press enter or type [q] to exit")
+            reply = input()
+            if reply == "q":
+                raise YandexImagesDownloader.StopCaptchaInput()
+
+            del self.driver.requests
+            self.driver.get(url_with_params)
+
+
+
 
 #------------- Main Program -------------#
-def main():
-    parser = user_input()
-
-    args = parser.parse_args()
-    arguments = vars(args)
-
-    for arg in args_list:
-        if arg not in arguments:
-            arguments[arg] = None
+def scrap(args):
+    keywords = []
     
-    # Initialization and Validation of user arguments
-    if arguments["keywords"]:
-        search_keywords = [str(item) for item in arguments["keywords"].split(",") if len(item)]
+    if args.keywords:
+        keywords.extend([str(item).strip() for item in args.keywords.split(",") 
+                           if len(item)])
 
-    if arguments["keywords_from_file"]:
-        search_keywords = keywords_from_file(arguments["keywords_from_file"])
+    if args.keywords_from_file:
+        with open(args.keywords_from_file, "r") as f:
+            keywords.extend([line.strip() for line in f])
+    
+    
+    executable_path = f"executable_path = {args.driver_path}" if args.driver_path else ""
+    driver = eval(f"webdriver.{args.browser}({executable_path})")
+    try:
+        pool = None
+        if args.num_workers:
+            pool = Pool(args.num_workers)
+        downloader = YandexImagesDownloader(driver, 
+                                            args.output_directory, 
+                                            args.limit, args.isize, 
+                                            args.exact_isize, 
+                                            args.iorient, 
+                                            args.extension, 
+                                            args.color, 
+                                            args.itype, 
+                                            args.commercial, 
+                                            args.recent,
+                                            pool)
 
-    # both time and time range should not be allowed in the same query
-    if arguments["isize"] and arguments["exact_isize"]:
-        raise ValueError("Either \"size\" or \"exact_size\" should be used in a query."
-                            "Both cannot be used at the same time.")
-
-    # If single_image or url argument not present then keywords is mandatory argument
-    if arguments['single_image'] is None and arguments['keywords'] is None \
-            and arguments['keywords_from_file'] is None:
+        start_time = time.time()
+        total_errors = 0
         
-        parser.print_help()
+        if keywords:
+            downloader_result = downloader.download_images(keywords)
+            total_errors += sum(keyword_result.errors_count
+                                for keyword_result in downloader_result.keyword_results)
+    finally:
+        driver.quit()
+        if pool:
+            pool.close()
+            pool.join()
+
+    if args.single_image:
+        img_url_result = download_single_image(args.single_image, 
+                                               pathlib.Path(args.output_directory))
+        total_errors += 1 if img_url_result.status == "fail" else 0
+        
+    total_time = time.time() - start_time
+
+    logging.info("\nEverything downloaded!")
+    logging.info(f"Total errors: {total_errors}")
+    logging.info(f"Total files downloaded: {args.limit - total_errors}")
+    logging.info(f"Total time taken: {total_time} seconds.")
+    if keywords and args.json:
+        downloader_result_json = downloader_result.to_dict()  # pylint: disable=no-member
+        json_path = pathlib.Path(args.output_directory) / pathlib.Path(args.json)
+        pretty_json = json.dumps(downloader_result_json, indent=4, ensure_ascii=False)
+        with open(json_path, "w", encoding = "utf-8") as f:
+            f.write(pretty_json)
+        logging.info(f"Fesults information saved: {json_path}.")
+    
+def setup_logging(quiet_mode):
+    logging.basicConfig(level=logging.WARNING if quiet_mode 
+                        else logging.INFO, format="%(message)s")
+    selenium_logger = logging.getLogger('seleniumwire')
+    selenium_logger.setLevel(logging.WARNING)
+    
+
+def main():
+    try:
+        args = parse_args()
+        setup_logging(args.quiet_mode)
+        scrap(args)
+        
+    except KeyboardInterrupt as e:
+        logging.error("KeyboardInterrupt")
         sys.exit(1)
 
-    ###
+    except Exception as e:
+        logging.error(e, exc_info=True)
+        sys.exit(1)
 
-    total_errors = 0
-
-    downloader = YandexImagesDowload()
-    session = requests.Session()
-    downloader.check_captcha(session)
-
-    time_start = time.time()
-
-    if arguments["single_image"]:  # Download Single Image using a URL
-        downloader.download_single_image(arguments["single_image"], arguments["output_directory"], 
-                                        arguments, session)
-    else:  # or download multiple images based on keywords search
-        results = downloader.download_images(search_keywords, arguments, session)
-        total_errors += sum(results[keyword]["errors_count"] for keyword in results if results[keyword]["status"] == "success")
-
-    session.close()
-
-    time_end = time.time() 
-    total_time = time_end - time_start
-    
-    if not arguments["silent_mode"]:
-        print("\nEverything downloaded!")
-        print("Total errors: " + str(total_errors))
-        print("Total time taken: " + str(total_time) + " Seconds")
 
 if __name__ == "__main__":
     main()

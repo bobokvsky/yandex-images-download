@@ -528,7 +528,7 @@ def scrap(args):
             keywords.extend([line.strip() for line in f])
     
     
-    executable_path = f"executable_path = {args.driver_path}" if args.driver_path else ""
+    executable_path = f"executable_path = {repr(args.driver_path)}" if args.driver_path else ""
     driver = eval(f"webdriver.{args.browser}({executable_path})")
     try:
         if args.num_workers:

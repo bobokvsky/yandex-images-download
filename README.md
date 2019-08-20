@@ -13,7 +13,7 @@ Python Script to download images from Yandex.Images.
 * Firefox, Chrome, Safari and Edge are supported
 
 # Installation
-1. Install script requirements using `pip`:
+1. Install script requirements using `pip`:  
 `$ pip install -r requirements.txt`
 
 2. Get [Selenium driver executable](https://www.seleniumhq.org/about/platforms.jsp) for your browser and platform. Firefox, Chrome, Safari and Edge are supported. 

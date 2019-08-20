@@ -531,9 +531,9 @@ def scrap(args):
     executable_path = f"executable_path = {args.driver_path}" if args.driver_path else ""
     driver = eval(f"webdriver.{args.browser}({executable_path})")
     try:
-        pool = None
         if args.num_workers:
             pool = Pool(args.num_workers)
+        
         downloader = YandexImagesDownloader(driver, 
                                             args.output_directory, 
                                             args.limit, args.isize, 
@@ -555,7 +555,7 @@ def scrap(args):
                                 for keyword_result in downloader_result.keyword_results)
     finally:
         driver.quit()
-        if pool:
+        if args.num_workers:
             pool.close()
             pool.join()
 

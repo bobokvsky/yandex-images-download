@@ -43,9 +43,9 @@ Example: "img_href": ("https://www.bestnews.kz/media/k2/items/"
 
 b) "snippet" has useful information about the source url.
 
-Example: {"title": "Как отметит свой 64-й день рождения Владимир Путин - Bestnew",
+Example: {"title": "How Vladimir Putin will celebrate his 64th birthday - Bestnew",
 "hasTitle": True,
-"text": "Как отметит свой 64-й день рождения Владимир <b>Путин</b>.",
+"text": "How Vladimir <b>Putin</b> will celebrate his 64th birthday.",
 "url": ("https://www.bestnews.kz/index.php/bn-v-mire/item/"
         "7533-kak-otmetit-svoj-64-j-den-rozhdeniya-vladimir-putin/amp"),
 "domain": "Bestnews.kz",
@@ -178,7 +178,7 @@ def parse_args():
 @dataclass_json
 @dataclass
 class ImgUrlResult:
-    status: str  # "succes" or "fail"
+    status: str
     message: str
     img_url : str
     img_path: str
@@ -186,7 +186,7 @@ class ImgUrlResult:
 @dataclass_json
 @dataclass
 class PageResult:
-    status: str  # "succes" or "fail"
+    status: str
     message: str
     page : int
     errors_count : int
@@ -195,7 +195,7 @@ class PageResult:
 @dataclass_json
 @dataclass
 class KeywordResult:
-    status: str  # "succes" or "fail"
+    status: str
     message: str
     keyword: str
     errors_count : int
@@ -204,7 +204,7 @@ class KeywordResult:
 @dataclass_json
 @dataclass
 class DownloaderResult:
-    status: str  # "succes" or "fail"
+    status: str
     message: str
     keyword_results: List[KeywordResult]
     
@@ -488,6 +488,8 @@ class YandexImagesDownloader():
 
 
         logging.info(f"  Found {last_page+1} pages of {keyword}.")
+        
+        
         # Getting all images.
         imgs_count = 0
         errors_count = 0
@@ -559,8 +561,8 @@ class YandexImagesDownloader():
             if not soup.select(".form__captcha"):
                 break
                 
-            logging.warning(f"Please, type the captcha in the browser"
-                            ", then press enter or type [q] to exit")
+            logging.warning(f"Please, type the captcha in the browser,"
+                            " then press Enter or type [q] to exit")
             reply = input()
             if reply == "q":
                 raise YandexImagesDownloader.StopCaptchaInput()
@@ -569,9 +571,6 @@ class YandexImagesDownloader():
             self.driver.get(url_with_params)
 
 
-
-
-#------------- Main Program -------------#
 def scrap(args):
     keywords = []
     

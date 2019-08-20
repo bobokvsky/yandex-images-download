@@ -1,58 +1,3 @@
-"""
-////////// How requests are made
-Each request in Yandex images is as follows.
-
-Usually, we make the request on the site:
->>> "https://yandex.ru/images/search?text=Putin"
-After getting request, the browser gets html of page 1 request.
-When the user is scrolling down, the Yandex automatically makes requests
-to get next pages and loads them to your browser.
-
-To see it, just loads these urls and compare them with the main url:
->>> https://yandex.ru/images/search?p=0&text=Putin
->>> https://yandex.ru/images/search?p=1&text=Putin
->>> https://yandex.ru/images/search?p=2&text=Putin
-
-The number of images per page seems to depend on using sockets.
-requests.get() seems to return 30 images per page. (tested on my PC and on Linux server)
-On my PC, in Google Chrome, each page have 109 images.
-
-Pages are indexed from 0 to 49. (from 0 to 26 on Google Chrome).
-So, the maximum count of images is 1500. (and, by surprise, 1485 on Google Chrome)
-
-We can find the actual last page by following:
-1) Find tag <div> with class="serp-list".
-2) This tag has attribute called "data-bem" with JSON data: {"serp-list" : serp-list}
-3) serp-list has these keys: ("pageNum", "lastPage", "reqid"). 
-    "lastPage" is the target. 
-//////////
-
-////////// How "image box" is stored in html page file.
-0) First, we need get page source.
-1) Each found image "box" is stored into tag <div> with class="serp-item".
-2) This tag has attribute called "data-bem" with JSON data: {"serp-item" : serp-item}
-3) serp_item has these keys:
-("reqid", "freshness", "preview", "dups", "thumb", "snippet", 
-"detail_url", "img_href", "useProxy", "pos", "id", "rimId", "docid", 
-"greenUrlCounterPath", "counterPath")
-
-The most interested keys are "img_href" and "snippet"
-a) "img_href" is the source url of image. 
-Example: "img_href": ("https://www.bestnews.kz/media/k2/items/"
-                    "cache/b777a09d352b16a52af288cda2537345_XL.jpg")
-
-b) "snippet" has useful information about the source url.
-
-Example: {"title": "How Vladimir Putin will celebrate his 64th birthday - Bestnew",
-"hasTitle": True,
-"text": "How Vladimir <b>Putin</b> will celebrate his 64th birthday.",
-"url": ("https://www.bestnews.kz/index.php/bn-v-mire/item/"
-        "7533-kak-otmetit-svoj-64-j-den-rozhdeniya-vladimir-putin/amp"),
-"domain": "Bestnews.kz",
-"redirUrl": ("https://www.bestnews.kz/index.php/bn-v-mire/item/
-            7533-kak-otmetit-svoj-64-j-den-rozhdeniya-vladimir-putin/amp")}
-"""
-
 import argparse
 import itertools
 import json
@@ -69,10 +14,10 @@ from dataclasses import dataclass
 from dataclasses_json import dataclass_json
 from math import floor
 from multiprocessing import Pool
-from seleniumwire.webdriver import Chrome
-from seleniumwire.webdriver import Edge
-from seleniumwire.webdriver import Firefox
-from seleniumwire.webdriver import Safari
+from seleniumwire.webdriver import Chrome as Chrome_
+from seleniumwire.webdriver import Edge as Edge_
+from seleniumwire.webdriver import Firefox as Firefox_
+from seleniumwire.webdriver import Safari as Safari_
 from seleniumwire import webdriver
 from typing import List, Union
 from urllib.parse import urlparse, urlencode
@@ -214,7 +159,7 @@ def filepath_fix_existing(directory_path : pathlib.Path,
                           name : str, 
                           filepath : pathlib.Path) -> pathlib.Path:
     """Expands name portion of filepath with numeric "(x)" suffix.
-    Used when multiproccesing is not running."""
+    """
     new_filepath = filepath
     if filepath.exists():
         for i in itertools.count(start = 1):
@@ -304,12 +249,12 @@ class YandexImagesDownloader():
     """
 
     MAIN_URL = "https://yandex.ru/images/search"
-    MAXIMUM_PAGES_PER_SEARCH = 50  # read "How requests are made" for details
-    MAXIMUM_IMAGES_PER_PAGE = 30 # read "How requests are made" for details
+    MAXIMUM_PAGES_PER_SEARCH = 50
+    MAXIMUM_IMAGES_PER_PAGE = 30
     MAXIMUM_FILENAME_LENGTH = 50
 
     def __init__(self, 
-                 driver : Union[Chrome, Edge, Firefox, Safari], 
+                 driver : Union[Chrome_, Edge_, Firefox_, Safari_], 
                  output_directory = "download/", 
                  limit = 100, 
                  isize = None,

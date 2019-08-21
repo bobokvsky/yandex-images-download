@@ -20,14 +20,15 @@ from urllib.parse import urlparse, urlencode
 from urllib3.exceptions import SSLError, NewConnectionError
 
 
-Driver = Union[webdriver.Chrome, webdriver.Edge, webdriver.Firefox, webdriver.Safari]
+Driver = Union[webdriver.Chrome, webdriver.Edge, 
+               webdriver.Firefox, webdriver.Safari]
 
-driver_name_to_class_and_default_path = {
-    'Chrome' : (webdriver.Chrome, 'chromedriver'),
-    'Edge' : (webdriver.Edge, 'MicrosoftWebDriver.exe'),
-    'Firefox' : (webdriver.Firefox, 'geckodriver'),
-    'Safari' : (webdriver.Safari, '/usr/bin/safaridriver'),
-}  # type: Dict[str, Tuple[Driver, str]]
+driver_name_to_class = {
+    'Chrome' : webdriver.Chrome,
+    'Edge' : webdriver.Edge,
+    'Firefox' : webdriver.Firefox,
+    'Safari' : webdriver.Safari,
+}  # type: Dict[str, Driver]
 
 
 def parse_args():
@@ -38,10 +39,10 @@ def parse_args():
     parser.add_argument("browser", 
                     help=("browser with WebDriver"),
                     type=str,
-                    choices=list(driver_name_to_class_and_default_path))
+                    choices=list(driver_name_to_class))
     
     parser.add_argument("-dp", "--driver-path", 
-                        help=("path to browers's WebDriver"),
+                        help=("path to brower's WebDriver"),
                         type=str, default=None)
 
     input_group.add_argument("-k", "--keywords", 
@@ -517,9 +518,10 @@ class YandexImagesDownloader():
 
 
 def get_driver(name: str, path: Optional[str]) -> Driver:
-    driver_class, default_path = driver_name_to_class_and_default_path[name]
+    driver_class = driver_name_to_class[name]
+    args = {'executable_path' : path} if path else {}
     
-    return driver_class(executable_path=path or default_path)
+    return driver_class(**args)
 
 
 def scrap(args):
@@ -533,11 +535,10 @@ def scrap(args):
         with open(args.keywords_from_file, "r") as f:
             keywords.extend([line.strip() for line in f])
     
-    driver = get_driver(args.browser, args.browser_path)
+    driver = get_driver(args.browser, args.driver_path)
     
     try:
-        if args.num_workers:
-            pool = Pool(args.num_workers)
+        pool = Pool(args.num_workers) if (args.num_workers) else None
         
         downloader = YandexImagesDownloader(driver, 
                                             args.output_directory, 

@@ -20,7 +20,7 @@ Python Script to download images from Yandex.Images.
 Use option `--driver-path` to specify the driver's path or add the executable in your PATH.
 
 
-## Example of use
+# Example of use
 Simple example of using keywords and limit arguments to download images using [Chrome WebDriver](https://sites.google.com/a/chromium.org/chromedriver/)
 
 ```$ python yandeximagesdownload.py Chrome --keywords "vodka, bears, balalaika" --limit 10```
@@ -30,3 +30,8 @@ Example of using keywords from input file with specific image extension/format
 ```$ python yandeximagesdownload.py Chrome --keywords_from_file input_example.txt --itype=png```
 
 All other information about input arguments can be obtained with the `--help` argument.
+
+
+# Acknowledgements
+Special thanks to Andrey Lyashko for code reviews.
+Special thanks to Boris Kovarski (https://github.com/kovarsky) and Andrey Lyashko for backing the project.

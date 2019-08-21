@@ -14,14 +14,20 @@ from dataclasses import dataclass
 from dataclasses_json import dataclass_json
 from math import floor
 from multiprocessing import Pool
-from seleniumwire.webdriver import Chrome as Chrome_
-from seleniumwire.webdriver import Edge as Edge_
-from seleniumwire.webdriver import Firefox as Firefox_
-from seleniumwire.webdriver import Safari as Safari_
 from seleniumwire import webdriver
-from typing import List, Union
+from typing import List, Union, Optional
 from urllib.parse import urlparse, urlencode
 from urllib3.exceptions import SSLError, NewConnectionError
+
+
+Driver = Union[webdriver.Chrome, webdriver.Edge, webdriver.Firefox, webdriver.Safari]
+
+driver_name_to_class_and_default_path = {
+    'Chrome' : (webdriver.Chrome, 'chromedriver'),
+    'Edge' : (webdriver.Edge, 'MicrosoftWebDriver.exe'),
+    'Firefox' : (webdriver.Firefox, 'geckodriver'),
+    'Safari' : (webdriver.Safari, '/usr/bin/safaridriver'),
+}  # type: Dict[str, Tuple[Driver, str]]
 
 
 def parse_args():
@@ -32,8 +38,7 @@ def parse_args():
     parser.add_argument("browser", 
                     help=("browser with WebDriver"),
                     type=str,
-                    choices=["Firefox", "Chrome", 
-                             "Edge", "Safari"],)
+                    choices=list(driver_name_to_class_and_default_path))
     
     parser.add_argument("-dp", "--driver-path", 
                         help=("path to browers's WebDriver"),
@@ -254,7 +259,7 @@ class YandexImagesDownloader():
     MAXIMUM_FILENAME_LENGTH = 50
 
     def __init__(self, 
-                 driver : Union[Chrome_, Edge_, Firefox_, Safari_], 
+                 driver: Driver, 
                  output_directory = "download/", 
                  limit = 100, 
                  isize = None,
@@ -511,6 +516,12 @@ class YandexImagesDownloader():
             self.driver.get(url_with_params)
 
 
+def get_driver(name: str, path: Optional[str]) -> Driver:
+    driver_class, default_path = driver_name_to_class_and_default_path[name]
+    
+    return driver_class(executable_path=path or default_path)
+
+
 def scrap(args):
     keywords = []
     
@@ -522,19 +533,7 @@ def scrap(args):
         with open(args.keywords_from_file, "r") as f:
             keywords.extend([line.strip() for line in f])
     
-    browser_to_driver = {'Firefox': webdriver.Firefox,
-                      'Chrome' : webdriver.Chrome,
-                      'Edge' : webdriver.Edge,
-                      'Safari' : webdriver.Safari}
-    
-    browser_to_driver_path = {'Firefox' : 'geckodriver',
-                               'Chrome' : 'chromedriver',
-                               'Edge' : 'MicrosoftWebDriver.exe',
-                               'Safari' : '/usr/bin/safaridriver'}
-    
-    driver_path = args.driver_path if args.driver_path else browser_to_driver_path[args.browser]
-    driver = browser_to_driver[args.browser](executable_path = driver_path)
-    
+    driver = get_driver(args.browser, args.browser_path)
     
     try:
         if args.num_workers:

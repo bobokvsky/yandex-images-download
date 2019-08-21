@@ -311,12 +311,6 @@ class YandexImagesDownloader():
             "recent" : self.recent
             }
         
-        for param in params:
-            if hasattr(self, param):
-                value = eval(f"self.{param}")
-                if value:
-                    params[param] = value
-        
         if self.exact_isize:
             width, height = self.exact_isize
             params["isize"] = "eq"
@@ -405,7 +399,8 @@ class YandexImagesDownloader():
                                        page_results = [])
 
         self.check_captcha_and_get(YandexImagesDownloader.MAIN_URL, 
-                                   params={'text': keyword})
+                                   params={'text': keyword, 
+                                           "nomisspell" : 1})
         response = self.get_response()
 
         if not (response.reason == "OK"):
@@ -527,9 +522,20 @@ def scrap(args):
         with open(args.keywords_from_file, "r") as f:
             keywords.extend([line.strip() for line in f])
     
+    browser_to_driver = {'Firefox': webdriver.Firefox,
+                      'Chrome' : webdriver.Chrome,
+                      'Edge' : webdriver.Edge,
+                      'Safari' : webdriver.Safari}
     
-    executable_path = f"executable_path = {repr(args.driver_path)}" if args.driver_path else ""
-    driver = eval(f"webdriver.{args.browser}({executable_path})")
+    browser_to_driver_path = {'Firefox' : 'geckodriver',
+                               'Chrome' : 'chromedriver',
+                               'Edge' : 'MicrosoftWebDriver.exe',
+                               'Safari' : '/usr/bin/safaridriver'}
+    
+    driver_path = args.driver_path if args.driver_path else browser_to_driver_path[args.browser]
+    driver = browser_to_driver[args.browser](executable_path = driver_path)
+    
+    
     try:
         if args.num_workers:
             pool = Pool(args.num_workers)

@@ -523,6 +523,14 @@ def get_driver(name: str, path: Optional[str]) -> Driver:
     
     return driver_class(**args)
 
+def save_json(args, downloader_result : DownloaderResult):
+    downloader_result_json = downloader_result.to_dict()  # pylint: disable=no-member
+    json_path = pathlib.Path(args.output_directory) / pathlib.Path(args.json)
+    pretty_json = json.dumps(downloader_result_json, indent=4, ensure_ascii=False)
+    with open(json_path, "w", encoding = "utf-8") as f:
+        f.write(pretty_json)
+    logging.info(f"Fesults information saved: {json_path}.")
+
 
 def scrap(args):
     keywords = []
@@ -577,12 +585,7 @@ def scrap(args):
     logging.info(f"Total files downloaded: {args.limit - total_errors}")
     logging.info(f"Total time taken: {total_time} seconds.")
     if keywords and args.json:
-        downloader_result_json = downloader_result.to_dict()  # pylint: disable=no-member
-        json_path = pathlib.Path(args.output_directory) / pathlib.Path(args.json)
-        pretty_json = json.dumps(downloader_result_json, indent=4, ensure_ascii=False)
-        with open(json_path, "w", encoding = "utf-8") as f:
-            f.write(pretty_json)
-        logging.info(f"Fesults information saved: {json_path}.")
+        save_json(args, downloader_result)
     
 def setup_logging(quiet_mode):
     logging.basicConfig(level=logging.WARNING if quiet_mode 

@@ -4,8 +4,8 @@ import pathlib
 import sys
 
 from multiprocessing import Pool
-from downloader import YandexImagesDownloader, get_driver, download_single_image, save_json
-from parse import parse_args
+from .downloader import YandexImagesDownloader, get_driver, download_single_image, save_json
+from .parse import parse_args
 
 
 def scrap(args):

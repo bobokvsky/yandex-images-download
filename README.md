@@ -19,11 +19,11 @@ Use option `--driver-path` to specify the driver's path or add the executable in
 # Examples
 Simple example using [Chrome WebDriver](https://sites.google.com/a/chromium.org/chromedriver/):
 
-```$ python yandeximagesdownload.py Chrome --keywords "vodka, bears, balalaika" --limit 10```
+```$ yandeximagesdownload Chrome --keywords "vodka, bears, balalaika" --limit 10```
 
 Example of using keywords from input file with specific image extension/format:
 
-```$ python yandeximagesdownload.py Chrome --keywords_from_file input_example.txt --itype=png```
+```$ yandeximagesdownload Chrome --keywords_from_file input_example.txt --itype=png```
 
 All other information can be obtained with the `--help` argument.
 

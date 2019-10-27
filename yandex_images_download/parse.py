@@ -1,6 +1,6 @@
 import argparse
 import logging
-from downloader import DRIVER_NAME_TO_CLASS
+from .downloader import DRIVER_NAME_TO_CLASS
 
 
 def parse_args():

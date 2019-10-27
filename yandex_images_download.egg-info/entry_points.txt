@@ -1,0 +1,3 @@
+[console_scripts]
+yandex-images-download = yandex_images_download:run_main
+

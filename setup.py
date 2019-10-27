@@ -38,7 +38,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            'yandex-images-download = yandex-images-download:run_main'
+            'yandex-images-download = yandex_images_download:run_main'
         ]
     }
 )

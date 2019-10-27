@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 from codecs import open
 from os import path
 
-__version__ = '2.8.0'
+__version__ = 'v1.0'
 
 here = path.abspath(path.dirname(__file__))
 
@@ -19,14 +19,14 @@ install_requires = [x.strip() for x in all_reqs]
 setup(
     name='yandex_images_download',
     packages=['yandex_images_download'],
-    version='v1.0',
+    version=__version__,
     license='MIT',
     description="Python Script to download images from Yandex.Images",
     long_description=long_description,
     author = 'Alexander Kozlov',
     author_email='alexander.kozlovsky.m@gmail.com',
     url='https://github.com/bobokvsky/yandex-images-download',
-    download_url = 'https://github.com/bobokvsky/yandex-images-download/archive/v1.0.tar.gz',    # I explain this later on
+    download_url = f'https://github.com/bobokvsky/yandex-images-download/archive/{__version__}.tar.gz',
     keywords='yandex images download save terminal command-line scrapper',
     install_requires=install_requires,
     classifiers=[

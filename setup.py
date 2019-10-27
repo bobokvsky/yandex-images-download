@@ -17,8 +17,8 @@ with open(path.join(here, 'requirements.txt'), encoding='utf-8') as f:
 install_requires = [x.strip() for x in all_reqs]
 
 setup(
-    name='yandex-images-download',
-    packages=['yandex-images-download'],
+    name='yandex_images_download',
+    packages=['yandex_images_download'],
     version=__version__,
     license='MIT',
     description="Python Script to download images from Yandex.Images",

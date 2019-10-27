@@ -7,7 +7,7 @@ __version__ = 'v1.0'
 here = path.abspath(path.dirname(__file__))
 
 # Get the long description from the README file
-with open('README.rst', encoding='utf-8') as f:
+with open('README.md', encoding='utf-8') as f:
     long_description = f.read()
 
 # get the dependencies and installs
@@ -23,6 +23,7 @@ setup(
     license='MIT',
     description="Python Script to download images from Yandex.Images",
     long_description=long_description,
+    long_description_content_type='text/markdown',
     author = 'Alexander Kozlov',
     author_email='alexander.kozlovsky.m@gmail.com',
     url='https://github.com/bobokvsky/yandex-images-download',

@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 from codecs import open
 from os import path
 
-__version__ = 'v1.0.2'
+__version__ = 'v1.0.3'
 
 here = path.abspath(path.dirname(__file__))
 
@@ -35,5 +35,10 @@ setup(
         'Intended Audience :: Developers',
         'License :: OSI Approved :: MIT License',
         'Programming Language :: Python :: 3.7',
-    ]
+    ],
+    entry_points={
+        "console_scripts": [
+            'yandex-images-download = yandex-images-download:run_main'
+        ]
+    }
 )

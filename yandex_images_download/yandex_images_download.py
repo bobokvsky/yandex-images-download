@@ -30,7 +30,7 @@ def scrap(args):
                                             args.exact_isize, args.iorient,
                                             args.extension, args.color,
                                             args.itype, args.commercial,
-                                            args.recent, pool)
+                                            args.recent, pool, args.similar_images)
 
         start_time = time.time()
         total_errors = 0

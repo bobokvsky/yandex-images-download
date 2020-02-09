@@ -11,6 +11,7 @@ import time
 from bs4 import BeautifulSoup
 from dataclasses import dataclass
 from dataclasses_json import dataclass_json
+from hashlib import md5
 from math import floor
 from seleniumwire import webdriver
 from typing import List, Union, Optional
@@ -418,7 +419,7 @@ class YandexImagesDownloader():
             logging.info(f"Downloading images for {keyword}...")
 
             if self.similar_images:
-                sub_directory = str(abs(hash(keyword)))
+                sub_directory = md5(keyword.encode("utf-8")).hexdigest()
             else:
                 sub_directory = keyword
 

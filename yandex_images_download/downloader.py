@@ -3,21 +3,18 @@ import json
 import logging
 import os
 import pathlib
-import re
-import requests
-import sys
 import time
-
-from bs4 import BeautifulSoup
 from dataclasses import dataclass
-from dataclasses_json import dataclass_json
 from math import floor
-from seleniumwire import webdriver
 from typing import List, Union, Optional
 from urllib.parse import urlparse, urlencode
-from urllib3.exceptions import SSLError, NewConnectionError
 
-Driver = Union[webdriver.Chrome, webdriver.Edge, 
+import requests
+from bs4 import BeautifulSoup
+from dataclasses_json import dataclass_json
+from seleniumwire import webdriver
+
+Driver = Union[webdriver.Chrome, webdriver.Edge,
                webdriver.Firefox, webdriver.Safari]
 
 DRIVER_NAME_TO_CLASS = {
@@ -27,10 +24,16 @@ DRIVER_NAME_TO_CLASS = {
     'Safari': webdriver.Safari,
 }  # type: Dict[str, Driver]
 
+DEFAULT_SAFARI_PORT = 12345
 
-def get_driver(name: str, path: Optional[str]) -> Driver:
+
+def get_driver(name: str, path: Optional[str], port: Optional[int]) -> Driver:
     driver_class = DRIVER_NAME_TO_CLASS[name]
     args = {'executable_path': path} if path else {}
+    if port:
+        args["seleniumwire_options"] = {'port': port}
+    elif name == "Safari":
+        args["seleniumwire_options"] = {'port': DEFAULT_SAFARI_PORT}
 
     return driver_class(**args)
 
@@ -122,7 +125,7 @@ def download_single_image(img_url: str,
     }
 
     try:
-        response = requests.get(img_url, timeout=10)
+        response = requests.get(img_url, timeout=100)
 
         data = response.content
         content_type = response.headers["Content-Type"]
@@ -270,15 +273,14 @@ class YandexImagesDownloader():
         self.check_captcha_and_get(YandexImagesDownloader.MAIN_URL,
                                    params=self.get_url_params(page, keyword))
 
-        response = self.get_response()
-
-        if not (response.reason == "OK"):
-            page_result.status = "fail"
-            page_result.message = (f"Page response is not ok."
-                                   f" page: {page},",
-                                   f" status_code: {response.status_code}.")
-            page_result.errors_count = YandexImagesDownloader.MAXIMUM_IMAGES_PER_PAGE
-            return page_result
+        # Does not work since self.driver.requests is empty
+        # if not (response.reason == "OK"):
+        #     page_result.status = "fail"
+        #     page_result.message = (f"Page response is not ok."
+        #                            f" page: {page},",
+        #                            f" status_code: {response.status_code}.")
+        #     page_result.errors_count = YandexImagesDownloader.MAXIMUM_IMAGES_PER_PAGE
+        #     return page_result
 
         soup_page = BeautifulSoup(self.driver.page_source, "lxml")
 
@@ -333,16 +335,17 @@ class YandexImagesDownloader():
                                        'text': keyword,
                                        "nomisspell": 1
                                    })
-        response = self.get_response()
-
-        if not (response.reason == "OK"):
-            keyword_result = "fail"
-            keyword_result.message = (
-                "Failed to fetch a search page."
-                f" url: {YandexImagesDownloader.MAIN_URL},"
-                f" params: {{'text': {keyword}}},"
-                f" status_code: {response.status_code}")
-            return keyword_result
+        # Does not work since self.driver.requests is empty
+        # response = self.get_response()
+        #
+        # if not (response.reason == "OK"):
+        #     keyword_result = "fail"
+        #     keyword_result.message = (
+        #         "Failed to fetch a search page."
+        #         f" url: {YandexImagesDownloader.MAIN_URL},"
+        #         f" params: {{'text': {keyword}}},"
+        #         f" status_code: {response.status_code}")
+        #     return keyword_result
 
         soup = BeautifulSoup(self.driver.page_source, "lxml")
 
@@ -359,7 +362,7 @@ class YandexImagesDownloader():
         actual_last_page = 1 + floor(
             self.limit / YandexImagesDownloader.MAXIMUM_IMAGES_PER_PAGE)
 
-        logging.info(f"  Found {last_page+1} pages of {keyword}.")
+        logging.info(f"  Found {last_page + 1} pages of {keyword}.")
 
         # Getting all images.
         imgs_count = 0
@@ -372,7 +375,7 @@ class YandexImagesDownloader():
             if page > actual_last_page:
                 actual_last_page += 1
 
-            logging.info(f"  Scrapping page {page+1}/{actual_last_page}...")
+            logging.info(f"  Scrapping page {page + 1}/{actual_last_page}...")
 
             page_result = self.download_images_by_page(keyword, page,
                                                        imgs_count,

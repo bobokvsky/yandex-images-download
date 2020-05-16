@@ -336,7 +336,7 @@ class YandexImagesDownloader():
         response = self.get_response()
 
         if not (response.reason == "OK"):
-            keyword_result = "fail"
+            keyword_result.status = "fail"
             keyword_result.message = (
                 "Failed to fetch a search page."
                 f" url: {YandexImagesDownloader.MAIN_URL},"

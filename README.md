@@ -29,5 +29,5 @@ All other information can be obtained with the `--help` argument.
 
 
 # Acknowledgements
-Special thanks to Andrey Lyashko for code reviews.  
-Special thanks to Boris Kovarski (https://github.com/kovarsky) and Andrey Lyashko for backing the project.
+Special thanks to Andrey Lyashko (https://github.com/andy-landy) for code reviews and collaboration.  
+Special thanks to Boris Kovarski (https://github.com/kovarsky) and Andrey Lyashko (https://github.com/andy-landy) for backing the project.

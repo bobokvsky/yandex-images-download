@@ -32,6 +32,12 @@ def parse_args():
                              type=str,
                              default=None)
 
+    parser.add_argument(
+        "-s",
+        "--similar-images",
+        help=("search similar images by urls instead of keywords"),
+        action="store_true")
+
     parser.add_argument("-q",
                         "--quiet-mode",
                         default=False,

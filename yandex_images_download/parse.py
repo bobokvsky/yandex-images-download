@@ -1,5 +1,4 @@
 import argparse
-import logging
 from .downloader import DRIVER_NAME_TO_CLASS
 
 
@@ -16,6 +15,12 @@ def parse_args():
                         "--driver-path",
                         help=("path to brower's WebDriver"),
                         type=str,
+                        default=None)
+
+    parser.add_argument("-p",
+                        "--port",
+                        help=("port for WebDriver"),
+                        type=int,
                         default=None)
 
     input_group.add_argument(

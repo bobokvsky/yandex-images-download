@@ -20,7 +20,7 @@ def scrap(args):
         with open(args.keywords_from_file, "r") as f:
             keywords.extend([line.strip() for line in f])
 
-    driver = get_driver(args.browser, args.driver_path)
+    driver = get_driver(args.browser, args.driver_path, args.port)
 
     try:
         pool = Pool(args.num_workers) if (args.num_workers) else None

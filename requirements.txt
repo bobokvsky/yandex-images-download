@@ -5,3 +5,4 @@ typing==3.7.4
 dataclasses_json==0.2.14
 selenium_wire==1.0.8
 beautifulsoup4==4.8.0
+lxml==4.5.0

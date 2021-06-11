@@ -227,7 +227,10 @@ class YandexImagesDownloader():
 
     def get_response(self):
         pathes = [request.path for request in self.driver.requests]
-        request = self.driver.requests[pathes.index(self.driver.current_url)]
+        try:
+            request = self.driver.requests[pathes.index(self.driver.current_url)]
+        except:
+            request = self.driver.requests[pathes.index(self.driver.requests[pathes.index(self.url_with_params)].response.headers['Location'])]
         return request.response
 
     def init_url_params(self):
@@ -252,10 +255,36 @@ class YandexImagesDownloader():
 
         return params
 
-    def get_url_params(self, page, text):
-        params = {"p": page, "text": text}
-        params.update(self.url_params)
+    def is_url(self, keyword):
+        if ('http://' in keyword.lower()) or ('https://' in keyword.lower()):
+            return True
+        else:
+            return False
 
+    def get_url_params_by_keyword(self, keyword):
+        if self.is_url(keyword):
+            params = {"source": "collections",
+                      "rpt": "imageview",
+                      "cbir_page": "similar",
+                      "url": keyword,
+                      "nomisspell": 1
+                      }
+        else:
+            params = {'text': keyword, "nomisspell": 1}
+        return params
+
+    def get_url_params_by_page(self, page, text):
+        if self.is_url(text):
+            params = {"source": "collections",
+                      "rpt": "imageview",
+                      "cbir_page": "similar",
+                      "url": text,
+                      "nomisspell": 1,
+                      "p": page
+                      }
+        else:
+            params = {"p": page, "text": text}
+        params.update(self.url_params)
         return params
 
     def download_images_by_page(self, keyword, page, imgs_count,
@@ -268,7 +297,7 @@ class YandexImagesDownloader():
                                  img_url_results=[])
 
         self.check_captcha_and_get(YandexImagesDownloader.MAIN_URL,
-                                   params=self.get_url_params(page, keyword))
+                                   params=self.get_url_params_by_page(page, keyword))
 
         response = self.get_response()
 
@@ -328,11 +357,8 @@ class YandexImagesDownloader():
                                        errors_count=None,
                                        page_results=[])
 
-        self.check_captcha_and_get(YandexImagesDownloader.MAIN_URL,
-                                   params={
-                                       'text': keyword,
-                                       "nomisspell": 1
-                                   })
+        self.check_captcha_and_get(YandexImagesDownloader.MAIN_URL, self.get_url_params_by_keyword(keyword))
+
         response = self.get_response()
 
         if not (response.reason == "OK"):
@@ -390,6 +416,13 @@ class YandexImagesDownloader():
 
         return keyword_result
 
+    def get_subdirectory(self, keyword):
+        subdirectory = keyword
+        if self.is_url(keyword):
+            import hashlib
+            subdirectory = hashlib.sha256(keyword.encode('utf-8')).hexdigest()
+        return subdirectory
+
     def download_images(self, keywords: List[str]) -> DownloaderResult:
         dowloader_result = DownloaderResult(status=None,
                                             message=None,
@@ -401,7 +434,7 @@ class YandexImagesDownloader():
             logging.info(f"Downloading images for {keyword}...")
 
             keyword_result = self.download_images_by_keyword(
-                keyword, sub_directory=keyword)
+                keyword, sub_directory=self.get_subdirectory(keyword))
             dowloader_result.keyword_results.append(keyword_result)
 
             logging.info(keyword_result.message)
@@ -419,6 +452,7 @@ class YandexImagesDownloader():
         If there is captcha, you have to type it in input() or quit."""
 
         url_with_params = f"{url}?{urlencode(params)}"
+        self.url_with_params = url_with_params
 
         del self.driver.requests
         self.driver.get(url_with_params)

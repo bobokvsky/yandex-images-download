@@ -227,7 +227,7 @@ class YandexImagesDownloader():
         logging.info(f"Limit of images is set to {self.limit}")
 
         self.block_list = []
-        if os.path.exists(block_list_path):
+        if os.path.isfile(block_list_path):
             with open(block_list_path) as f:
                 self.block_list = f.readlines()
 

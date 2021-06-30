@@ -113,10 +113,15 @@ def parse_args():
                         type=str,
                         default=False)
 
+    parser.add_argument("--block-list-path",
+                        help="path to the url block list",
+                        type=str,
+                        default=False)
+
     parser.add_argument("--num-workers",
                         help="number of workers",
-                        type=int,
-                        default=0)
+                        type=str,
+                        default='')
 
     args = parser.parse_args()
 

@@ -200,7 +200,8 @@ class YandexImagesDownloader():
                  itype=None,
                  commercial=None,
                  recent=None,
-                 pool=None):
+                 pool=None,
+                 block_list_path=''):
         self.driver = driver
         self.output_directory = pathlib.Path(output_directory)
         self.limit = limit
@@ -224,6 +225,12 @@ class YandexImagesDownloader():
 
         logging.info(f'Output directory is set to "{self.output_directory}/"')
         logging.info(f"Limit of images is set to {self.limit}")
+
+        self.block_list = []
+        if os.path.exists(block_list_path):
+            with open(block_list_path) as f:
+                self.block_list = f.readlines()
+
 
     def get_response(self):
         pathes = [request.path for request in self.driver.requests]
@@ -317,7 +324,7 @@ class YandexImagesDownloader():
             json.loads(item.attrs["data-bem"])["serp-item"]
             for item in tag_sepr_item
         ]
-        img_hrefs = [key["img_href"] for key in serp_items]
+        img_hrefs = [key["img_href"] for key in serp_items if not (key["img_href"] in self.block_list)]
 
         errors_count = 0
         for img_url in img_hrefs:

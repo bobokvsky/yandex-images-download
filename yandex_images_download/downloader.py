@@ -229,7 +229,7 @@ class YandexImagesDownloader():
         self.block_list = []
         if os.path.isfile(block_list_path):
             with open(block_list_path) as f:
-                self.block_list = f.readlines()
+                self.block_list = [item.rstrip() for item in f.readlines()]
 
 
     def get_response(self):

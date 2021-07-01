@@ -113,8 +113,13 @@ def parse_args():
                         type=str,
                         default=False)
 
-    parser.add_argument("--block-list-path",
+    parser.add_argument("--block-url-path",
                         help="path to the url block list",
+                        type=str,
+                        default=False)
+
+    parser.add_argument("--block-keyword-path",
+                        help="path to the keyword block list",
                         type=str,
                         default=False)
 

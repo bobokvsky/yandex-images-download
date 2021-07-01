@@ -201,7 +201,8 @@ class YandexImagesDownloader():
                  commercial=None,
                  recent=None,
                  pool=None,
-                 block_list_path=''):
+                 block_url_path='',
+                 block_keyword_path=''):
         self.driver = driver
         self.output_directory = pathlib.Path(output_directory)
         self.limit = limit
@@ -226,10 +227,15 @@ class YandexImagesDownloader():
         logging.info(f'Output directory is set to "{self.output_directory}/"')
         logging.info(f"Limit of images is set to {self.limit}")
 
-        self.block_list = []
-        if os.path.isfile(block_list_path):
-            with open(block_list_path) as f:
-                self.block_list = [item.rstrip() for item in f.readlines()]
+        self.block_url_list = []
+        if os.path.isfile(block_url_path):
+            with open(block_url_path) as f:
+                self.block_url_list = [item.rstrip() for item in f.readlines()]
+
+        self.block_keyword_list = []
+        if os.path.isfile(block_keyword_path):
+            with open(block_keyword_path) as f:
+                self.block_keyword_list = [item.rstrip() for item in f.readlines()]
 
 
     def get_response(self):
@@ -324,7 +330,7 @@ class YandexImagesDownloader():
             json.loads(item.attrs["data-bem"])["serp-item"]
             for item in tag_sepr_item
         ]
-        img_hrefs = [key["img_href"] for key in serp_items if not (key["img_href"] in self.block_list)]
+        img_hrefs = [key["img_href"] for key in serp_items if not (key["img_href"] in self.block_url_list)]
 
         errors_count = 0
         for img_url in img_hrefs:
@@ -438,7 +444,11 @@ class YandexImagesDownloader():
         dowloader_result.status = "fail"
 
         for keyword in keywords:
-            logging.info(f"Downloading images for {keyword}...")
+            if keyword in self.block_keyword_list:
+                logging.info(f"Skip images for {keyword}...")
+                continue
+            else:
+                logging.info(f"Downloading images for {keyword}...")
 
             keyword_result = self.download_images_by_keyword(
                 keyword, sub_directory=self.get_subdirectory(keyword))

@@ -240,10 +240,13 @@ class YandexImagesDownloader():
 
     def get_response(self):
         pathes = [request.path for request in self.driver.requests]
-        try:
+        if self.driver.current_url in pathes:
             request = self.driver.requests[pathes.index(self.driver.current_url)]
-        except:
-            request = self.driver.requests[pathes.index(self.driver.requests[pathes.index(self.url_with_params)].response.headers['Location'])]
+        elif self.url_with_params in pathes:
+            request = self.driver.requests[pathes.index(self.url_with_params)]
+        else:
+            request = self.driver.requests[
+                pathes.index(self.driver.requests[pathes.index(self.url_with_params)].response.headers['Location'])]
         return request.response
 
     def init_url_params(self):

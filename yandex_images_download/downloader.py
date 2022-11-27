@@ -122,7 +122,9 @@ def download_single_image(img_url: str,
     }
 
     try:
-        response = requests.get(img_url, timeout=10)
+        # response = requests.get(img_url, timeout=10)
+        response = requests.get(img_url, timeout=10, headers={
+            'User-Agent': 'CoolBot/0.0 (https://example.org/coolbot/; coolbot@example.org)'})
 
         data = response.content
         content_type = response.headers["Content-Type"]
@@ -216,11 +218,12 @@ class YandexImagesDownloader():
         self.recent = recent
 
         self.url_params = self.init_url_params()
-        self.requests_headers = {
-            'User-Agent':
-                ("Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML,"
-                 " like Gecko) Chrome/41.0.2228.0 Safari/537.36")
-        }
+        # self.requests_headers = {
+        #     'User-Agent':
+        #         ("Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML,"
+        #          " like Gecko) Chrome/41.0.2228.0 Safari/537.36")
+        # }
+        self.requests_headers = {'User-Agent': 'CoolBot/0.0 (https://example.org/coolbot/; coolbot@example.org)'}
         self.cookies = {}
         self.pool = pool
 
@@ -240,13 +243,11 @@ class YandexImagesDownloader():
 
     def get_response(self):
         pathes = [request.path for request in self.driver.requests]
-        if self.driver.current_url in pathes:
+        try:
             request = self.driver.requests[pathes.index(self.driver.current_url)]
-        elif self.url_with_params in pathes:
+        except:
             request = self.driver.requests[pathes.index(self.url_with_params)]
-        else:
-            request = self.driver.requests[
-                pathes.index(self.driver.requests[pathes.index(self.url_with_params)].response.headers['Location'])]
+            # request = self.driver.requests[pathes.index(self.driver.requests[pathes.index(self.url_with_params)].response.headers['Location'])]
         return request.response
 
     def init_url_params(self):
@@ -317,7 +318,7 @@ class YandexImagesDownloader():
 
         response = self.get_response()
 
-        if not (response.reason == "OK"):
+        if not (response.reason.lower() == "ok"):
             page_result.status = "fail"
             page_result.message = (f"Page response is not ok."
                                    f" page: {page},",
@@ -377,7 +378,7 @@ class YandexImagesDownloader():
 
         response = self.get_response()
 
-        if not (response.reason == "OK"):
+        if not (response.reason.lower() == "ok"):
             keyword_result = "fail"
             keyword_result.message = (
                 "Failed to fetch a search page."

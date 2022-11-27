@@ -30,7 +30,7 @@ def scrap(args):
                                             args.exact_isize, args.iorient,
                                             args.extension, args.color,
                                             args.itype, args.commercial,
-                                            args.recent, pool)
+                                            args.recent, pool, args.block_url_path, args.block_keyword_path)
 
         start_time = time.time()
         total_errors = 0
